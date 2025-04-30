@@ -1,0 +1,193 @@
+---
+title: "Creating a Map Using ggplot2"
+author: "Audrey DeGregorio"
+date: "2025-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r}
+library(pacman)
+p_load(tidyverse)
+library(ggplot2)
+library(plotly)
+
+```
+
+A Simple World Map
+```{r}
+map<-map_data("world")
+ggplot(map,
+       aes(x=long,y=lat,group=group))+
+  geom_polygon(fill="lightblue",colour="white")+
+  theme_void()
+```
+
+A Map for Specific Regions
+```{r}
+North_Asia<-c("China","Japan","Mongolia","North Korea","South Korea","Taiwan")
+North_Asia_map<-map_data("world",region=North_Asia)
+
+#Compute the centroid as the mean longitude and latitude
+region.data<-North_Asia_map %>%
+  group_by(region) %>%
+  summarize(long=mean(long), lat=mean(lat)) %>%
+  arrange()
+
+#Ready to plot the map
+ggplot(North_Asia_map,
+       aes(x=long,y=lat))+
+  geom_polygon(aes(group=group,fill=region))+
+  geom_text(data=region.data,aes(label=region),
+            size=5, hjust=0.5, col="#808080",
+            fontface="bold")+
+  scale_fill_viridis_d()+
+  theme_void()+
+  theme(legend.position="none")
+```
+
+A Choropleth Map
+```{r}
+drinks<-read_csv("G:/My Drive/Spring 2025/MTH 209/In Class Labs/drinks.csv")
+drinks_map<-drinks %>%
+  left_join(map,by=c("country"="region"))
+ggplot(drinks_map,
+       aes(long,lat,group=group))+
+  geom_polygon(aes(fill=total_litres_of_pure_alcohol),
+               color="white")+
+  scale_fill_viridis_c(option="C")+
+  labs(fil="Total Litres of Pure Alcohol")+
+  theme_void()+
+  theme(legend.position="bottom")
+```
+
+```{r}
+ggplot(drinks,
+       aes(map_id=country))+
+  geom_map(aes(fill=total_litres_of_pure_alcohol),
+           map=map,color="white")+
+  expand_limits(x=map$long, y=map$lat)+
+  labs(fill="Total Litres of Pure Alcohol")+
+  theme_void()+
+  theme(legend.position="bottom")
+```
+
+A US State-Level Map
+```{r}
+US_map<-map_data("state")
+
+# compute the centroid as the mean long and lat
+state_data<-US_map %>%
+  filter(region  != "district of columbia") %>%
+  group_by(region) %>%
+  summarize(long=mean(long),lat=mean(lat)) %>%
+  arrange(region)
+
+state_data$region.abb<-state.abb[-c(2,11)] # drop Alaska and Hawaii
+
+p<-ggplot(US_map, aes(x=long, y=lat))+
+  geom_polygon(aes(group=group,fill=region),
+color="white")+
+  geom_text(data=state_data,
+            aes(label=state_data$region.abb),
+            fontface="bold")+
+  theme_void()+
+  theme(leged.position="none")
+  
+p
+```
+
+A Dynamic Map using plotly - 1
+```{r}
+library(plotly)
+ggplotly(p)
+```
+
+A Dynamic Map using plotly - 2
+```{r}
+US_map<-map_data("state")
+
+# compute the centroid as the mean long and lat
+state_data<-US_map %>%
+  filter(region != "district of columbia") %>%
+  group_by(region) %>%
+  summarize(long=mean(long),lat=mean(lat)) %>%
+  arrange(region)
+
+state_data$region.abb<-state.abb[-c(2,11)] # drop Alaska and Hawaii
+
+crimes<- data.frame(region=rownames(USArrests), USArrests) %>%
+  filter(region!=c("Alaska","Hawaii"))
+
+crimes$region<-tolower(crimes$region)
+
+crimes_map<- crimes %>%
+  left_join(US_map, by="region")
+
+g1<-ggplot(crimes_map, aes(x=long,y=lat))+
+  geom_polygon(aes(group=group, fill=Murder,
+                   text=paste0(region, ":\n",Murder, " murder arrests per 100,000"),
+                   color="white"))+
+  geom_text(data=state_data,
+            aes(label=region.abb),fontface="bold",size=3)+
+  scale_fill_viridis_c(option="C")+
+  theme_void()
+
+
+ggplotly(g1,tooltip="text")
+```
+
+A County-Level Map
+```{r}
+covid<-read_csv("./COVID19.csv")
+
+ohio<-covid %>%
+  filter(administrative_area_level_2=="Ohio",
+         date=="2021-12-31")
+
+ohio<-ohio%>%
+  rename(county=administrative_area_level_3)
+
+ohio_county<-map_data("county",region="ohio")
+
+ohio_county$subregion<-str_to_title(ohio_county$subregion)
+
+ohio_map<- ohio%>%
+  left_join(ohio_county,
+            by=c("county"="subregion"))
+
+g2<-ggplot(ohio_map,
+           aes(x=long,y=lat))+
+  geom_polygon(aes(group=group,fill=deaths,
+                   text=paste0("County: ", county, "\n",
+                               "Total Deaths: ", deaths)))+
+  geom_text(data=ohio,
+            aes(x=longitude, y=latitude, label=county),
+            color="white", fontface="bold")+
+  scale_fill_viridis_c(option="H")+
+  theme_minimal()+
+  theme_void()
+
+font<- list(
+  family="Arial",
+  size=15,
+  color="white"
+)
+
+label<- list(
+  bgcolor="#232F34",
+  bordercolor="transparent",
+  font=font
+)
+
+ggplotly(g2, tooltop="text",
+         width=850,height=800) %>%
+           style(hoverlabel=label) %>% 
+           layout(font=font)
+
+```
+
